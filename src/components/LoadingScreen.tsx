@@ -43,7 +43,7 @@ function LoadingScreen({ message = 'Loading...' }: LoadingScreenProps) {
 
           {/* Loading Text */}
           <p className="text-center text-gray-600 font-medium text-base">
-            {message}<span className="animate-pulse">...</span>
+            Reloading<span className="animate-pulse">...</span>
           </p>
         </div>
       </div>
