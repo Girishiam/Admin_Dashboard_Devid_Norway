@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { XMarkIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { BASE_URL } from '../api_integration';
 
 interface PasswordChangeModalProps {
   isOpen: boolean;
@@ -20,14 +21,41 @@ function PasswordChangeModal({ isOpen, onClose }: PasswordChangeModalProps) {
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.newPassword !== formData.confirmPassword) {
       alert('Passwords do not match!');
       return;
     }
-    console.log('Updating password...');
-    onClose();
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/admins/change-password`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          old_password: formData.oldPassword,
+          new_password: formData.newPassword,
+          confirm_password: formData.confirmPassword
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(data.message || 'Password changed successfully');
+        onClose();
+        setFormData({ oldPassword: '', newPassword: '', confirmPassword: '' });
+      } else {
+        alert(data.error || 'Failed to change password');
+      }
+    } catch (err) {
+      console.error('Error changing password:', err);
+      alert('An error occurred while changing password');
+    }
   };
 
   return (

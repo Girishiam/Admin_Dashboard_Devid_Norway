@@ -3,27 +3,70 @@ import { useNavigate, Link } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../context/AuthContext';
 
+import { BASE_URL } from '../../api_integration';
+
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberPassword, setRememberPassword] = useState(false);
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSubmit = (e: React.FormEvent) => {
+
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Use auth context to login (this handles localStorage internally)
-    login(email, password);
-    
-    // Optional: Store remember password preference
-    if (rememberPassword) {
-      localStorage.setItem('rememberPassword', 'true');
+    setError('');
+    setIsLoading(true);
+
+    console.log('Attempting login with:', { email });
+
+    try {
+      const response = await fetch(`${BASE_URL}admin/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+      console.log('Login response:', data);
+
+      if (response.ok) {
+        // Assuming data structure based on user input:
+        // { token: "...", role: "...", username: "..." }
+        if (data.token) {
+           login({
+             username: data.username,
+             role: data.role,
+             email: email
+           }, data.token);
+           
+           // Optional: Store remember password preference
+           if (rememberPassword) {
+             localStorage.setItem('rememberPassword', 'true');
+           }
+           
+           console.log('Login successful, navigating to dashboard');
+           navigate('/dashboard');
+        } else {
+          console.error('Login failed: No token received');
+          setError('Login failed: No token received');
+        }
+      } else {
+        console.error('Login failed:', data.error || 'Unknown error');
+        setError(data.error || 'Invalid credentials');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
-    
-    // Navigate to dashboard
-    navigate('/dashboard');
   };
 
   return (
@@ -75,6 +118,13 @@ function Login() {
               Please enter your email and password to continue
             </p>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm text-center">
+              {error}
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -184,8 +234,9 @@ function Login() {
               onMouseLeave={(e) => {
                 e.currentTarget.style.backgroundColor = '#006699';
               }}
+              disabled={isLoading}
             >
-              Sign in
+              {isLoading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
         </div>

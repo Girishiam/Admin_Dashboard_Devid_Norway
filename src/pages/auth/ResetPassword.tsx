@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+
+import { BASE_URL } from '../../api_integration';
 
 function ResetPassword() {
   const [newPassword, setNewPassword] = useState('');
@@ -12,6 +14,13 @@ function ResetPassword() {
   const navigate = useNavigate();
   const location = useLocation();
   const email = location.state?.email || '';
+
+
+  useEffect(() => {
+    if (!email) {
+      navigate('/auth/login');
+    }
+  }, [email, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,15 +37,44 @@ function ResetPassword() {
       return;
     }
 
+    if (!email || !location.state?.otp) {
+      setError('Invalid session. Please try again.');
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate API call
-    setTimeout(() => {
+    const payload = { 
+      email: email,
+      new_password: newPassword,
+      confirm_password: confirmPassword
+    };
+
+    console.log('Reset Password Payload:', payload);
+
+    try {
+      const response = await fetch(`${BASE_URL}admin/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await response.json();
+      console.log('Reset Password Response:', data);
+
+      if (response.ok) {
+        // Navigate to success page
+        navigate('/auth/password-reset-success');
+      } else {
+        setError(data.message || 'Failed to reset password');
+      }
+    } catch (err) {
+      setError('Something went wrong. Please try again.');
+    } finally {
       setIsLoading(false);
-      console.log('Password reset successful');
-      // Navigate to success page or login
-      navigate('/auth/password-reset-success');
-    }, 1500);
+    }
   };
 
   return (

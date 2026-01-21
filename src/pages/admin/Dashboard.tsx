@@ -1,12 +1,42 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { FaUsers, FaChartLine, FaStar } from 'react-icons/fa';
+import { BASE_URL } from '../../api_integration';
 
 function Dashboard() {
+  const [dashboardData, setDashboardData] = useState({
+    total_users: 0,
+    new_users_today: 0,
+    positive_reviews: 0,
+  });
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      const token = localStorage.getItem('token');
+      try {
+        const response = await fetch(`${BASE_URL}admin/dashboard`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setDashboardData(data);
+        } else {
+          console.error('Failed to fetch dashboard data');
+        }
+      } catch (error) {
+        console.error('Error fetching dashboard data:', error);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
   const stats = [
     {
       id: 1,
       title: 'Total Users',
-      value: '1320',
+      value: dashboardData.total_users,
       icon: FaUsers,
       bgColor: 'bg-blue-50',
       iconBg: 'bg-[#006699]',
@@ -14,7 +44,7 @@ function Dashboard() {
     {
       id: 2,
       title: "Today's New Users",
-      value: '8',
+      value: dashboardData.new_users_today,
       icon: FaChartLine,
       bgColor: 'bg-green-50',
       iconBg: 'bg-[#006699]',
@@ -22,7 +52,7 @@ function Dashboard() {
     {
       id: 3,
       title: 'Total Positive Review',
-      value: '1200',
+      value: dashboardData.positive_reviews,
       icon: FaStar,
       bgColor: 'bg-purple-50',
       iconBg: 'bg-[#006699]',

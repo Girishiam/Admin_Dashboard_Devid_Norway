@@ -1,26 +1,19 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Bars3Icon, 
-  PencilIcon
+  PencilIcon,
+  ArrowPathIcon
 } from '@heroicons/react/24/outline';
+import { BASE_URL } from '../../api_integration';
 
 function PrivacyPolicy() {
   const navigate = useNavigate();
   const [isEditing, setIsEditing] = useState(false);
+  const [content, setContent] = useState<string>('');
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+  const [loading, setLoading] = useState(true);
   const editorRef = useRef<HTMLDivElement>(null);
-
-  const applyFormatting = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
-    editorRef.current?.focus();
-  };
-
-  const handleSave = () => {
-    setIsEditing(false);
-    const content = editorRef.current?.innerHTML;
-    console.log('Saved content:', content);
-    alert('Privacy Policy updated successfully!');
-  };
 
   const initialContent = `
     <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937;">Introduction</h2>
@@ -57,6 +50,145 @@ function PrivacyPolicy() {
     <p style="margin-bottom: 1.5rem; color: #1f2937; line-height: 1.6; font-size: 0.875rem;">We may update this Privacy Policy periodically. Any changes will be posted on this page with an updated revision date.</p>
   `;
 
+  // Helper to detect if content is plain text (no HTML tags)
+  const isPlainText = (text: string) => {
+    return !/<[a-z][\s\S]*>/i.test(text);
+  };
+
+  const formatContent = (text: string) => {
+    if (!text) return '';
+    
+    return text.split('\n\n').map(block => {
+      const lines = block.split('\n');
+      
+      // Check if it's a list (starts with - or •)
+      if (lines.some(line => line.trim().startsWith('-') || line.trim().startsWith('•'))) {
+        return `<ul style="list-style-type: disc; margin-left: 1.5rem; margin-bottom: 1.5rem;">
+          ${lines.map(line => {
+            const cleanLine = line.replace(/^[-•] /, '').trim();
+            return cleanLine ? `<li style="margin-bottom: 0.5rem; color: #1f2937; font-size: 0.875rem;">${cleanLine}</li>` : '';
+          }).join('')}
+        </ul>`;
+      }
+      
+      // Check if it's a header (short, no period at end, or title cased)
+      // Logic: shorter than 100 chars and doesn't end with . (unless it looks like a sentence?)
+      // Let's keep it simple: short and no period.
+      const isHeader = block.length < 80 && !block.trim().endsWith('.');
+      
+      if (isHeader) {
+        return `<h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 1rem; color: #1f2937;">${block}</h2>`;
+      }
+      
+      // Paragraph
+      return `<p style="margin-bottom: 1.5rem; color: #1f2937; line-height: 1.6; font-size: 0.875rem;">${block}</p>`;
+    }).join('');
+  };
+
+  const fetchPrivacyPolicy = async () => {
+    try {
+      const response = await fetch(`${BASE_URL}admin/privacy-policy`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      if (response.ok) {
+        let loadedContent = data.content || initialContent;
+        // Auto-format if it looks like plain text
+        if (loadedContent && isPlainText(loadedContent)) {
+          console.log('Detected plain text, auto-formatting...');
+          loadedContent = formatContent(loadedContent);
+        }
+        setContent(loadedContent);
+        
+        if (data.updated_at) {
+          const date = new Date(data.updated_at);
+          setLastUpdated(date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching privacy policy:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPrivacyPolicy();
+  }, []);
+
+  const applyFormatting = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+  };
+
+  const loadTemplate = () => {
+    if (confirm('This will replace your current content with the default template. Are you sure?')) {
+      if (editorRef.current) {
+        editorRef.current.innerHTML = initialContent;
+      }
+    }
+  };
+  
+  const handleAutoFormat = () => {
+    if (editorRef.current) {
+      const currentText = editorRef.current.innerText; // Get plain text
+      editorRef.current.innerHTML = formatContent(currentText);
+    }
+  };
+
+  const handleSave = async () => {
+    setIsEditing(false);
+    const newContent = editorRef.current?.innerHTML;
+    
+    if (!newContent) return;
+
+    try {
+      const response = await fetch(`${BASE_URL}admin/privacy-policy/update`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}` 
+        },
+        body: JSON.stringify({ content: newContent })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Saved content:', data);
+        if (data.updated_at) {
+           const date = new Date(data.updated_at);
+           setLastUpdated(date.toLocaleDateString('en-US', { 
+             year: 'numeric', 
+             month: 'long', 
+             day: 'numeric' 
+           }));
+        }
+        alert('Privacy Policy updated successfully!');
+        setContent(newContent); 
+      } else {
+        console.error('Failed to update privacy policy');
+        alert('Failed to update Privacy Policy.');
+      }
+    } catch (error) {
+      console.error('Error saving privacy policy:', error);
+      alert('Error saving Privacy Policy.');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="w-full min-h-screen flex items-center justify-center bg-[#f3f4f6]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#07657E]"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full min-h-screen relative" style={{ backgroundColor: '#f3f4f6' }}>
       {/* Edit Button - Top Right */}
@@ -90,7 +222,7 @@ function PrivacyPolicy() {
           <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
             Privacy Policy
           </h1>
-          <p className="text-sm text-gray-600">Last updated: December 22, 2025</p>
+          <p className="text-sm text-gray-600">Last updated: {lastUpdated}</p>
         </div>
 
         {/* Formatting Toolbar (shown only in edit mode) */}
@@ -133,7 +265,23 @@ function PrivacyPolicy() {
                 <span className="text-gray-700 font-bold">1.</span>
               </button>
               
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                 <button
+                  onClick={handleAutoFormat}
+                  className="px-4 py-2 border border-blue-200 text-blue-700 bg-blue-50 rounded-lg font-semibold text-sm hover:bg-blue-100 transition-all flex items-center gap-2"
+                  title="Auto-Format Content"
+                >
+                  <span className="w-4 h-4 flex items-center justify-center font-bold">✨</span>
+                  <span className="hidden sm:inline">Auto Format</span>
+                </button>
+                <button
+                  onClick={loadTemplate}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-50 transition-all flex items-center gap-2"
+                  title="Load Default Template"
+                >
+                  <ArrowPathIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Reset Default</span>
+                </button>
                 <button
                   onClick={handleSave}
                   className="px-4 py-2 text-white rounded-lg font-semibold text-sm hover:opacity-90 transition-all"
@@ -152,8 +300,8 @@ function PrivacyPolicy() {
             ref={editorRef}
             contentEditable={isEditing}
             suppressContentEditableWarning
-            dangerouslySetInnerHTML={{ __html: initialContent }}
-            className={`outline-none ${isEditing ? 'border-2 border-dashed border-gray-400 p-4 rounded-lg' : ''}`}
+            dangerouslySetInnerHTML={{ __html: content || initialContent }}
+            className={`outline-none ${isEditing ? 'border-2 border-dashed border-gray-400 p-4 rounded-lg' : ''} prose max-w-none`}
             style={{ minHeight: '600px' }}
           />
         </div>

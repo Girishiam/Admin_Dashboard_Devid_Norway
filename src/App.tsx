@@ -14,7 +14,7 @@ import LoadingScreen from './components/LoadingScreen';
 import Users from './pages/admin/Users';
 import Administrators from './pages/admin/Administrators';
 import Payment from './pages/admin/Payment';
-import APIs from './pages/admin/APIs';
+
 import Sessions from './pages/admin/Sessions';
 import PrivacyPolicy from './pages/admin/PrivacyPolicy';
 import TermsConditions from './pages/admin/TermsConditions';
@@ -66,7 +66,7 @@ function App() {
           <Route path="users" element={<Users />} />
           <Route path="administrators" element={<Administrators />} />
           <Route path="payment" element={<Payment />} />
-          <Route path="apis" element={<APIs />} />
+
           <Route path="sessions" element={<Sessions />} />
         </Route>
 

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { NoSymbolIcon, XMarkIcon, TrashIcon } from '@heroicons/react/24/outline';
+import React, { useState, useEffect } from 'react';
+import { BASE_URL } from '../../api_integration';
 
 interface User {
   id: string;
@@ -12,173 +12,85 @@ interface User {
   isDisabled?: boolean;
 }
 
-interface UserActionModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  userName: string;
-  userId: string;
-  isDisabled: boolean;
-  onDisableUser: (userId: string, disabled: boolean) => void;
-  onDeleteClick: () => void;
-}
 
-interface DeleteConfirmModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  userName: string;
-}
-
-// Delete Confirmation Modal
-function DeleteConfirmModal({ isOpen, onClose, onConfirm, userName }: DeleteConfirmModalProps) {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900">Confirm Deletion</h2>
-          <button 
-            onClick={onClose} 
-            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <XMarkIcon className="w-6 h-6 text-gray-600" />
-          </button>
-        </div>
-
-        <div className="p-6">
-          <p className="text-sm text-gray-600 mb-6">
-            Are you sure you want to delete <span className="font-semibold text-gray-900">{userName}</span>'s account? This action cannot be undone.
-          </p>
-
-          <div className="flex gap-3">
-            <button
-              onClick={onClose}
-              className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-gray-50 transition-all text-sm"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                onConfirm();
-                onClose();
-              }}
-              className="flex-1 px-6 py-3 text-white rounded-lg font-semibold hover:opacity-90 transition-all text-sm flex items-center justify-center gap-2"
-              style={{ backgroundColor: '#006699' }}
-            >
-              <TrashIcon className="w-4 h-4" />
-              <span>Delete Account</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// User Action Modal Component
-function UserActionModal({ 
-  isOpen, 
-  onClose, 
-  userName, 
-  userId,
-  isDisabled,
-  onDisableUser,
-  onDeleteClick
-}: UserActionModalProps) {
-  const [localDisabled, setLocalDisabled] = useState(isDisabled);
-
-  if (!isOpen) return null;
-
-  const handleToggleDisable = () => {
-    const newState = !localDisabled;
-    setLocalDisabled(newState);
-    onDisableUser(userId, newState);
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-bold text-gray-900">Action</h2>
-          <button 
-            onClick={onClose} 
-            className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <XMarkIcon className="w-6 h-6 text-gray-600" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6">
-          <div className="text-sm text-gray-600">
-            Managing actions for: <span className="font-semibold text-gray-900">{userName}</span>
-          </div>
-
-          <div className="flex items-center justify-between py-3">
-            <span className="text-sm font-semibold text-gray-900">Disable User Access</span>
-            <button
-              onClick={handleToggleDisable}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors`}
-              style={{ backgroundColor: localDisabled ? '#006699' : '#D1D5DB' }}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  localDisabled ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between py-3">
-            <span className="text-sm font-semibold text-gray-900">Delete User Account</span>
-            <button
-              onClick={onDeleteClick}
-              className="inline-flex items-center gap-2 px-4 py-2 text-white rounded-lg font-semibold text-sm transition-all hover:opacity-90"
-              style={{ backgroundColor: '#006699' }}
-            >
-              <TrashIcon className="w-4 h-4" />
-              <span>Delete</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Main User Management Component
 function Users() {
   const [activeTab, setActiveTab] = useState<'all' | 'free' | 'subscribers'>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedUser, setSelectedUser] = useState<User | null>(null);
-  const [showActionModal, setShowActionModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<User | null>(null);
-  const itemsPerPage = 10;
+  const [totalPages, setTotalPages] = useState(1);
+  const [users, setUsers] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const [users, setUsers] = useState<User[]>(
-    Array.from({ length: 35 }, (_, i) => ({
-      id: `#${1233 + i}`,
-      name: 'Foysal Rahman',
-      email: `user${i}@example.com`,
-      userEmail: 'bockely@att.com',
-      subscription: i % 3 === 0 ? 'Free' : '1 Month',
-      phone: `(${200 + i}) 555-${String(i).padStart(4, '0')}`,
-      avatar: `https://ui-avatars.com/api/?name=Foysal+Rahman&background=006699&color=fff&seed=${i}`,
-      isDisabled: false
-    }))
-  );
+  // Fetch Users from API
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setIsLoading(true);
+      setError('');
+      try {
+        const token = localStorage.getItem('token');
+        let url = `${BASE_URL}admin/users?page=${currentPage}`;
+        
+        // Add filtering params
+        if (activeTab === 'free') {
+          url += '&subscription=Free';
+        } else if (activeTab === 'subscribers') {
+          // Changed to 'Subscriber' to match common API patterns for non-free users
+          url += '&subscription=Subscriber'; 
+        }
 
-  const filteredUsers = users.filter(user => {
-    if (activeTab === 'free') return user.subscription === 'Free';
-    if (activeTab === 'subscribers') return user.subscription !== 'Free';
-    return true;
-  });
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
 
-  const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentUsers = filteredUsers.slice(startIndex, endIndex);
+        if (!response.ok) {
+          throw new Error('Failed to fetch users');
+        }
+
+        const data = await response.json();
+        
+        // Map API data to User interface
+        // API returns: { users: [...], pagination: {...} }
+        if (data.users) {
+          let mappedUsers = data.users.map((u: any) => ({
+            id: `#${u.id}`,
+            name: u.username || 'Unknown',
+            email: u.email || '',
+            userEmail: u.email || '', // Duplicate as per UI requirement
+            subscription: u.subscription || 'Free',
+            phone: 'N/A', // Not provided by API
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(u.username || 'User')}&background=006699&color=fff`,
+            isDisabled: false // Not provided by API, default to false
+          }));
+
+          // Client-side fallback: Filter out free users if in subscribers tab
+          // This handles the case where the API ignores the subscription filter
+          if (activeTab === 'subscribers') {
+            mappedUsers = mappedUsers.filter((u: any) => u.subscription !== 'Free');
+          }
+
+          setUsers(mappedUsers);
+        }
+
+        if (data.pagination) {
+          setTotalPages(data.pagination.total_pages);
+        }
+
+      } catch (err) {
+        console.error('Error fetching users:', err);
+        setError('Failed to load users. Please try again.');
+        // Fallback or empty state could be handled here
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchUsers();
+  }, [currentPage, activeTab]);
 
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
@@ -213,30 +125,7 @@ function Users() {
     setCurrentPage(1);
   };
 
-  const handleUserAction = (user: User) => {
-    setSelectedUser(user);
-    setShowActionModal(true);
-  };
 
-  const handleDisableUser = (userId: string, disabled: boolean) => {
-    setUsers(users.map(user => 
-      user.id === userId ? { ...user, isDisabled: disabled } : user
-    ));
-  };
-
-  const handleDeleteClick = () => {
-    setUserToDelete(selectedUser);
-    setShowActionModal(false);
-    setShowDeleteModal(true);
-  };
-
-  const handleConfirmDelete = () => {
-    if (userToDelete) {
-      setUsers(users.filter(user => user.id !== userToDelete.id));
-      setUserToDelete(null);
-      setSelectedUser(null);
-    }
-  };
 
   return (
     <div className="w-full">
@@ -284,45 +173,59 @@ function Users() {
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 whitespace-nowrap">Email</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 whitespace-nowrap">Subscription</th>
                 <th className="px-6 py-4 text-left text-sm font-bold text-gray-900 whitespace-nowrap">Phone Number</th>
-                <th className="px-6 py-4 text-center text-sm font-bold text-gray-900 whitespace-nowrap">Action</th>
               </tr>
             </thead>
             <tbody>
-              {currentUsers.map((user, index) => (
-                <tr key={index} className={`hover:bg-gray-50 transition-colors ${user.isDisabled ? 'opacity-50' : ''}`}>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 whitespace-nowrap">{user.id}</td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full flex-shrink-0" />
-                      <div>
-                        <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
-                          {user.name}
-                          {user.isDisabled && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded">Disabled</span>}
-                        </div>
-                        <div className="text-xs text-gray-500">{user.userEmail}</div>
-                      </div>
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                    <div className="flex justify-center items-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#006699]"></div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
-                  <td className="px-6 py-4 text-sm font-semibold text-gray-900 whitespace-nowrap">{user.subscription}</td>
-                  <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{user.phone}</td>
-                  <td className="px-6 py-4 text-center">
-                    <button 
-                      onClick={() => handleUserAction(user)}
-                      className="inline-flex items-center justify-center w-10 h-10 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-                    >
-                      <NoSymbolIcon className="w-5 h-5" />
-                    </button>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-red-500">
+                    {error} <br/>
+                    {/* Retry button/logic could be added here if fetchUsers was extracted or accessible */}
                   </td>
                 </tr>
-              ))}
+              ) : users.length === 0 ? (
+                <tr>
+                   <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                     No users found.
+                   </td>
+                </tr>
+              ) : (
+                users.map((user, index) => (
+                  <tr key={index} className={`hover:bg-gray-50 transition-colors ${user.isDisabled ? 'opacity-50' : ''}`}>
+                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 whitespace-nowrap">{user.id}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full flex-shrink-0" />
+                        <div>
+                          <div className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                            {user.name}
+                            {user.isDisabled && <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-semibold rounded">Disabled</span>}
+                          </div>
+                          <div className="text-xs text-gray-500">{user.userEmail}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900">{user.email}</td>
+                    <td className="px-6 py-4 text-sm font-semibold text-gray-900 whitespace-nowrap">{user.subscription}</td>
+                    <td className="px-6 py-4 text-sm text-gray-900 whitespace-nowrap">{user.phone}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
 
         {/* Mobile Card View */}
         <div className="md:hidden divide-y divide-gray-100">
-          {currentUsers.map((user, index) => (
+          {users.map((user, index) => (
             <div key={index} className={`p-4 hover:bg-gray-50 transition-colors ${user.isDisabled ? 'opacity-50' : ''}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 flex-1 min-w-0">
@@ -342,12 +245,6 @@ function Users() {
                     <div className="text-xs text-gray-500">{user.phone}</div>
                   </div>
                 </div>
-                <button 
-                  onClick={() => handleUserAction(user)}
-                  className="inline-flex items-center justify-center w-9 h-9 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex-shrink-0"
-                >
-                  <NoSymbolIcon className="w-5 h-5" />
-                </button>
               </div>
             </div>
           ))}
@@ -357,7 +254,7 @@ function Users() {
         <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-6 border-t border-gray-100 bg-gray-50">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
             <div className="text-xs sm:text-sm text-gray-600 order-2 sm:order-1">
-              Showing {startIndex + 1} to {Math.min(endIndex, filteredUsers.length)} of {filteredUsers.length} results
+              Page {currentPage} of {totalPages}
             </div>
             <div className="flex items-center gap-1 flex-wrap justify-center order-1 sm:order-2">
               <button
@@ -394,28 +291,6 @@ function Users() {
         </div>
       </div>
 
-      {/* Modals */}
-      {selectedUser && (
-        <UserActionModal
-          isOpen={showActionModal}
-          onClose={() => setShowActionModal(false)}
-          userName={selectedUser.name}
-          userId={selectedUser.id}
-          isDisabled={selectedUser.isDisabled || false}
-          onDisableUser={handleDisableUser}
-          onDeleteClick={handleDeleteClick}
-        />
-      )}
-      
-      <DeleteConfirmModal
-        isOpen={showDeleteModal}
-        onClose={() => {
-          setShowDeleteModal(false);
-          setUserToDelete(null);
-        }}
-        onConfirm={handleConfirmDelete}
-        userName={userToDelete?.name || ''}
-      />
     </div>
   );
 }

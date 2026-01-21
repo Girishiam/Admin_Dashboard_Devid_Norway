@@ -1,15 +1,16 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 
 interface User {
-  email: string;
-  name: string;
+  username: string;
   role: string;
+  email?: string; // Optional as API might not return it in the login response directly
 }
 
 interface AuthContextType {
   isAuthenticated: boolean;
   user: User | null;
-  login: (email: string, password: string) => void;
+  login: (userData: User, token: string) => void;
+  updateUser: (userData: User) => void;
   logout: () => void;
   loading: boolean;
 }
@@ -21,43 +22,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
-  useEffect(() => {
-    // Check authentication status on mount
-    const authStatus = localStorage.getItem('isAuthenticated');
-    const userEmail = localStorage.getItem('userEmail');
-    
-    if (authStatus === 'true' && userEmail) {
-      setIsAuthenticated(true);
-      setUser({
-        email: userEmail,
-        name: 'Moni Roy',
-        role: 'Super Admin'
-      });
-    }
-    setLoading(false);
-  }, []);
-
-  const login = (email: string, password: string) => {
-    // Simulate login
-    localStorage.setItem('isAuthenticated', 'true');
-    localStorage.setItem('userEmail', email);
-    setIsAuthenticated(true);
-    setUser({
-      email,
-      name: 'Moni Roy',
-      role: 'Super Admin'
-    });
-  };
-
   const logout = () => {
     localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('userEmail');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
     setIsAuthenticated(false);
     setUser(null);
   };
 
+  useEffect(() => {
+    // Check authentication status on mount
+    const authStatus = localStorage.getItem('isAuthenticated');
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    
+    if (authStatus === 'true' && token && storedUser) {
+      setIsAuthenticated(true);
+      setUser(JSON.parse(storedUser));
+    }
+    setLoading(false);
+
+    // Setup global fetch interceptor to handle 401s
+    const originalFetch = window.fetch;
+    window.fetch = async (...args) => {
+      try {
+        const response = await originalFetch(...args);
+        
+        // If 401 Unauthorized, and not calling the login endpoint itself
+        if (response.status === 401) {
+          const url = typeof args[0] === 'string' ? args[0] : (args[0] as Request).url;
+          // Avoid loop if login fails (though login usually returns 400 or 401 on failure, we don't need to "logout" then)
+          if (url && !url.includes('/login')) {
+             console.log('Session expired (401), logging out...');
+             logout();
+          }
+        }
+        return response;
+      } catch (error) {
+        throw error;
+      }
+    };
+
+    return () => {
+      window.fetch = originalFetch;
+    };
+  }, []);
+
+  const login = (userData: User, token: string) => {
+    localStorage.setItem('isAuthenticated', 'true');
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setIsAuthenticated(true);
+    setUser(userData);
+  };
+
+  const updateUser = (userData: User) => {
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+  };
+
   return (
-    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, loading }}>
+    <AuthContext.Provider value={{ isAuthenticated, user, login, logout, updateUser, loading }}>
       {children}
     </AuthContext.Provider>
   );

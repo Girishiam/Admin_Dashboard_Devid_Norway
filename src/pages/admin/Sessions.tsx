@@ -4,8 +4,12 @@ import {
   TrashIcon, 
   XMarkIcon, 
   PlayIcon,
+  PauseIcon,
   MusicalNoteIcon
 } from '@heroicons/react/24/outline';
+import { BASE_URL, MEDIA_BASE_URL } from '../../api_integration';
+import { AlertModal } from '../../components/ui/AlertModal';
+import { ConfirmationModal } from '../../components/ui/ConfirmationModal';
 
 interface Session {
   id: string;
@@ -40,7 +44,7 @@ interface Mood {
 interface AddBackgroundModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (sound: Omit<BackgroundSound, 'id'>) => void;
+  onSave: (name: string, file: File) => Promise<void>;
 }
 
 interface AddMoodModalProps {
@@ -54,19 +58,23 @@ interface ManageMoodQuestionsModalProps {
   onClose: () => void;
   mood: Mood | null;
   onSave: (mood: Mood) => void;
+  onDeleteQuestion: (questionId: string) => void;
+  onDeleteOption: (optionId: string) => void;
 }
 
 // Add Background Sound Modal
 function AddBackgroundModal({ isOpen, onClose, onSave }: AddBackgroundModalProps) {
   const [soundFile, setSoundFile] = useState<File | null>(null);
+  const [name, setName] = useState('');
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (soundFile) {
-      onSave({ name: soundFile.name.replace(/\.[^/.]+$/, ''), url: URL.createObjectURL(soundFile) });
+    if (soundFile && name.trim()) {
+      await onSave(name, soundFile);
       setSoundFile(null);
+      setName('');
       onClose();
     }
   };
@@ -82,6 +90,18 @@ function AddBackgroundModal({ isOpen, onClose, onSave }: AddBackgroundModalProps
         </div>
 
         <form onSubmit={handleSubmit} className="p-6">
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Enter background name"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006699] focus:border-[#006699] transition-all text-sm"
+              required
+            />
+          </div>
+
           <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center mb-6">
             <label className="cursor-pointer flex flex-col items-center gap-3">
               <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center">
@@ -115,7 +135,7 @@ function AddBackgroundModal({ isOpen, onClose, onSave }: AddBackgroundModalProps
               type="submit"
               className="flex-1 px-6 py-3 text-white rounded-lg font-semibold hover:opacity-90 transition-all text-sm flex items-center justify-center gap-2"
               style={{ backgroundColor: '#006699' }}
-              disabled={!soundFile}
+              disabled={!soundFile || !name.trim()}
             >
               <PlusIcon className="w-4 h-4" />
               Upload
@@ -190,7 +210,7 @@ function AddMoodModal({ isOpen, onClose, onSave }: AddMoodModalProps) {
 // Manage Mood Questions Modal - CENTERED & SMALLER
 // Manage Mood Questions Modal - FIXED TOP CUT-OFF
 // Manage Mood Questions Modal - PROPERLY CENTERED WITHOUT TOP CUT-OFF
-function ManageMoodQuestionsModal({ isOpen, onClose, mood, onSave }: ManageMoodQuestionsModalProps) {
+function ManageMoodQuestionsModal({ isOpen, onClose, mood, onSave, onDeleteQuestion, onDeleteOption }: ManageMoodQuestionsModalProps) {
   const [questions, setQuestions] = useState<MoodQuestion[]>(mood?.questions || []);
 
   React.useEffect(() => {
@@ -282,7 +302,7 @@ function ManageMoodQuestionsModal({ isOpen, onClose, mood, onSave }: ManageMoodQ
                     />
                   </div>
                   <button
-                    onClick={() => removeQuestion(question.id)}
+                    onClick={() => onDeleteQuestion(question.id)}
                     className="p-2 hover:bg-red-100 rounded-lg transition-colors mt-7"
                   >
                     <TrashIcon className="w-5 h-5 text-red-600" />
@@ -305,7 +325,13 @@ function ManageMoodQuestionsModal({ isOpen, onClose, mood, onSave }: ManageMoodQ
                         />
                         {question.options.length > 1 && (
                           <button
-                            onClick={() => removeOption(question.id, option.id)}
+                            onClick={() => {
+                              if (option.id.length > 10) {
+                                removeOption(question.id, option.id);
+                              } else {
+                                onDeleteOption(option.id);
+                              }
+                            }}
                             className="p-2 hover:bg-red-100 rounded-lg transition-colors flex-shrink-0"
                           >
                             <XMarkIcon className="w-4 h-4 text-red-600" />
@@ -367,143 +393,225 @@ function Sessions() {
   const [showMoodModal, setShowMoodModal] = useState(false);
   const [showQuestionsModal, setShowQuestionsModal] = useState(false);
   const [selectedMood, setSelectedMood] = useState<Mood | null>(null);
-  const itemsPerPage = 5;
+  
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [sessions] = useState<Session[]>(
-    Array.from({ length: 25 }, (_, i) => ({
-      id: `${i + 1}`,
-      userName: i === 0 ? 'Devon Lane' : i === 1 ? 'Foysal Rahman' : i === 2 ? 'Hari Danang' : i === 3 ? 'Floyd Miles' : 'Eleanor Pena',
-      averageMood: i % 3 === 0 ? 'Tired' : 'Stressed',
-      afterSession: i % 2 === 0 ? 'Average' : 'Excellent'
-    }))
-  );
+  // Alert Modal State
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertType, setAlertType] = useState<'success' | 'error'>('error');
 
-  const [backgroundSounds, setBackgroundSounds] = useState<BackgroundSound[]>([
-    { id: '1', name: 'Forest sound', url: '#' },
-    { id: '2', name: 'Bird sound', url: '#' },
-    { id: '3', name: 'Wave sound', url: '#' },
-    { id: '4', name: 'Wave sound', url: '#' },
-    { id: '5', name: 'Wave sound', url: '#' }
-  ]);
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    setAlertMessage(message);
+    setAlertType(type);
+    setShowAlert(true);
+  };
 
-  const [moods, setMoods] = useState<Mood[]>([
-    { 
-      id: '1', 
-      name: 'Sadness', 
-      questions: [
-        {
-          id: 'q1',
-          question: "What's making you feel sad today?",
-          options: [
-            { id: 'o1', text: "Personal loss or grief" },
-            { id: 'o2', text: "Feeling lonely or isolated" },
-            { id: 'o3', text: "Disappointment or failure" },
-            { id: 'o4', text: "Overwhelmed by responsibilities" },
-            { id: 'o5', text: "Not sure, just feeling down" }
-          ]
-        },
-        {
-          id: 'q2',
-          question: "How long have you been feeling this way?",
-          options: [
-            { id: 'o6', text: "Just today" },
-            { id: 'o7', text: "A few days" },
-            { id: 'o8', text: "A week or more" },
-            { id: 'o9', text: "Several weeks" }
-          ]
-        }
-      ]
-    },
-    { 
-      id: '2', 
-      name: 'Tired', 
-      questions: [
-        {
-          id: 'q3',
-          question: "What's making you feel tired today?",
-          options: [
-            { id: 'o10', text: "Didn't sleep well last night" },
-            { id: 'o11', text: "Feeling mentally drained" },
-            { id: 'o12', text: "Physically exhausted" },
-            { id: 'o13', text: "Emotionally tired or stressed" },
-            { id: 'o14', text: "Had a long or busy day" },
-            { id: 'o15', text: "Not sure, just feeling low on energy" }
-          ]
-        }
-      ]
-    },
-    { 
-      id: '3', 
-      name: 'Stressed', 
-      questions: [
-        {
-          id: 'q4',
-          question: "What's causing your stress?",
-          options: [
-            { id: 'o16', text: "Work or school pressure" },
-            { id: 'o17', text: "Financial concerns" },
-            { id: 'o18', text: "Relationship issues" },
-            { id: 'o19', text: "Health worries" },
-            { id: 'o20', text: "Too many responsibilities" },
-            { id: 'o21', text: "Uncertain about the future" }
-          ]
-        },
-        {
-          id: 'q5',
-          question: "How are you coping with stress?",
-          options: [
-            { id: 'o22', text: "Taking breaks when needed" },
-            { id: 'o23', text: "Talking to someone" },
-            { id: 'o24', text: "Exercise or physical activity" },
-            { id: 'o25', text: "Not coping well" }
-          ]
-        }
-      ]
-    },
-    { 
-      id: '4', 
-      name: 'Anxiety', 
-      questions: [
-        {
-          id: 'q6',
-          question: "What triggers your anxiety?",
-          options: [
-            { id: 'o26', text: "Upcoming events or deadlines" },
-            { id: 'o27', text: "Social situations" },
-            { id: 'o28', text: "Health concerns" },
-            { id: 'o29', text: "Fear of the unknown" },
-            { id: 'o30', text: "Past experiences" },
-            { id: 'o31', text: "No specific trigger" }
-          ]
-        }
-      ]
-    },
-    { 
-      id: '5', 
-      name: 'Calm', 
-      questions: [
-        {
-          id: 'q7',
-          question: "What helps you feel calm?",
-          options: [
-            { id: 'o32', text: "Meditation or breathing exercises" },
-            { id: 'o33', text: "Spending time in nature" },
-            { id: 'o34', text: "Listening to music" },
-            { id: 'o35', text: "Being with loved ones" },
-            { id: 'o36', text: "Having quiet time alone" },
-            { id: 'o37', text: "Physical exercise" }
-          ]
-        }
-      ]
+  // Delete Confirmation State
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteType, setDeleteType] = useState<'background' | 'mood' | 'question' | 'option' | null>(null);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+
+  const confirmDelete = (type: 'background' | 'mood' | 'question' | 'option', id: string) => {
+    setDeleteType(type);
+    setItemToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (deleteType === 'background') {
+      handleDeleteBackground();
+    } else if (deleteType === 'mood') {
+      handleDeleteMood();
+    } else if (deleteType === 'question') {
+      handleDeleteMoodQuestion();
+    } else if (deleteType === 'option') {
+      handleDeleteOption();
     }
-  ]);
+  };
+
+  const fetchSessions = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/sessions?page=${currentPage}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+         if (data.sessions) {
+           const mappedSessions = data.sessions.map((session: any, index: number) => ({
+             id: String(index), // API doesn't seem to return ID, using index for now
+             userName: session.username,
+             averageMood: session.average_mood,
+             afterSession: session.session_mood
+           }));
+           setSessions(mappedSessions);
+         }
+         if (data.pagination) {
+           setTotalPages(data.pagination.total_pages);
+         }
+      } else {
+        console.error('Failed to fetch sessions');
+        setError('Failed to fetch sessions');
+      }
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+      setError('Error connecting to server');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchSessions();
+  }, [currentPage]);
+
+  const [backgroundSounds, setBackgroundSounds] = useState<BackgroundSound[]>([]);
+
+  const fetchBackgrounds = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/backgrounds`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      if (response.ok && Array.isArray(data)) {
+        const mappedSounds = data.map((bg: any) => {
+          let audioPath = bg.audio_file;
+          if (audioPath.startsWith('http')) {
+             return {
+               id: String(bg.id),
+               name: bg.name,
+               url: audioPath
+             };
+          }
+          
+          // Ensure path starts with /
+          if (!audioPath.startsWith('/')) {
+             audioPath = '/' + audioPath;
+          }
+
+          // Ensure /media prefix if not present (assuming API returns relative path from media root)
+          if (!audioPath.startsWith('/media')) {
+             audioPath = '/media' + audioPath;
+          }
+
+          return {
+            id: String(bg.id),
+            name: bg.name,
+            url: `${MEDIA_BASE_URL}${audioPath}`
+          };
+        });
+        setBackgroundSounds(mappedSounds);
+      }
+    } catch (error) {
+      console.error('Error fetching backgrounds:', error);
+    }
+  };
+
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null);
+
+  const handlePlay = (sound: BackgroundSound) => {
+    if (playingId === sound.id) {
+      // Toggle pause if same sound
+      if (currentAudio) {
+        if (currentAudio.paused) {
+          currentAudio.play();
+        } else {
+          currentAudio.pause();
+          setPlayingId(null);
+        }
+      }
+    } else {
+      // Stop previous
+      if (currentAudio) {
+        currentAudio.pause();
+      }
+      // Play new
+      const newAudio = new Audio(sound.url);
+      newAudio.onended = () => setPlayingId(null);
+      newAudio.play().catch(e => {
+        console.error("Playback failed", e);
+        showNotification("Failed to play audio", "error");
+      });
+      setCurrentAudio(newAudio);
+      setPlayingId(sound.id);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchBackgrounds();
+    return () => {
+      // Cleanup audio on unmount
+      if (currentAudio) {
+        currentAudio.pause();
+      }
+    };
+  }, []);
+
+  const [moods, setMoods] = useState<Mood[]>([]);
+
+  const fetchMoods = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/mood-questions`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const data = await response.json();
+      
+      const moodsData = data.moods || (Array.isArray(data) ? data : []);
+      
+      if (response.ok) {
+        const mappedMoods = moodsData.map((m: any) => ({
+          id: String(m.mood_id || m.id),
+          name: m.mood_name || m.name,
+          questions: Array.isArray(m.questions) ? m.questions.map((q: any) => ({
+            id: String(q.id),
+            question: q.question,
+            options: Array.isArray(q.options) ? q.options.map((opt: any) => ({
+              id: String(opt.id),
+              text: opt.option_text
+            })) : []
+          })) : []
+        }));
+        setMoods(mappedMoods);
+      }
+    } catch (error) {
+      console.error('Error fetching moods:', error);
+    }
+  };
+
+  // Sync selectedMood with moods update (so modal shows latest questions)
+  React.useEffect(() => {
+    if (selectedMood) {
+      const updated = moods.find(m => m.id === selectedMood.id);
+      if (updated) setSelectedMood(updated);
+    }
+  }, [moods]);
+
+  React.useEffect(() => {
+    fetchMoods();
+  }, []);
 
   const [voices] = useState(['Male', 'Female']);
 
-  const totalPages = Math.ceil(sessions.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentSessions = sessions.slice(startIndex, endIndex);
+  // Removed client-side slicing
+  const currentSessions = sessions;
 
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
@@ -533,12 +641,165 @@ function Sessions() {
     return pages;
   };
 
-  const handleAddBackground = (sound: Omit<BackgroundSound, 'id'>) => {
-    setBackgroundSounds([...backgroundSounds, { ...sound, id: String(Date.now()) }]);
+  const handleAddBackground = async (name: string, file: File) => {
+    try {
+      const token = localStorage.getItem('token');
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('audio_file', file);
+
+      const response = await fetch(`${BASE_URL}admin/backgrounds/add`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        },
+        body: formData
+      });
+
+      if (response.ok) {
+        fetchBackgrounds(); // Refresh list
+        showNotification('Background added successfully', 'success');
+      } else {
+        if (response.status === 413) {
+           showNotification('File is too large using 5mb less', 'error');
+           // console.error('Failed to add background: 413 Payload Too Large');
+        } else {
+           console.error('Failed to add background:', response.statusText);
+           showNotification('Failed to add background', 'error');
+        }
+      }
+    } catch (error) {
+      console.error('Error adding background:', error);
+      showNotification('Error connecting to server', 'error');
+    }
   };
 
-  const handleAddMood = (moodName: string) => {
-    setMoods([...moods, { id: String(Date.now()), name: moodName, questions: [] }]);
+  const handleDeleteBackground = async () => {
+    if (!itemToDelete) return;
+    const id = itemToDelete;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/backgrounds/${id}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        setPlayingId(null);
+        if (currentAudio) {
+           currentAudio.pause();
+        }
+        fetchBackgrounds();
+        showNotification('Background deleted successfully', 'success');
+      } else {
+        console.error('Failed to delete background');
+        showNotification('Failed to delete background', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting background:', error);
+      showNotification('Error connecting to server', 'error');
+    }
+  };
+
+  const handleAddMood = async (moodName: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/moods/add`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name: moodName })
+      });
+
+      if (response.ok) {
+        fetchMoods();
+        showNotification('Mood added successfully', 'success');
+      } else {
+        showNotification('Failed to add mood', 'error');
+      }
+    } catch (error) {
+      console.error('Error adding mood:', error);
+      showNotification('Error connecting to server', 'error');
+    }
+  };
+
+  const handleDeleteMood = async () => {
+    if (!itemToDelete) return;
+    const id = itemToDelete;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/moods/${id}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        fetchMoods();
+        showNotification('Mood deleted successfully', 'success');
+      } else {
+        showNotification('Failed to delete mood', 'error');
+      }
+    } catch (error) {
+      showNotification('Error deleting mood', 'error');
+    }
+  };
+
+  const handleDeleteMoodQuestion = async () => {
+    if (!itemToDelete) return;
+    const id = itemToDelete;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/mood-questions/${id}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        fetchMoods();
+        showNotification('Question deleted successfully', 'success');
+      } else {
+        showNotification('Failed to delete question', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting question:', error);
+      showNotification('Error deleting question', 'error');
+    }
+  };
+
+  const handleDeleteOption = async () => {
+    if (!itemToDelete) return;
+    const id = itemToDelete;
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/question-options/${id}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        fetchMoods();
+        showNotification('Option deleted successfully', 'success');
+      } else {
+        showNotification('Failed to delete option', 'error');
+      }
+    } catch (error) {
+      console.error('Error deleting option:', error);
+      showNotification('Error deleting option', 'error');
+    }
   };
 
   const handleMoodClick = (mood: Mood) => {
@@ -546,16 +807,110 @@ function Sessions() {
     setShowQuestionsModal(true);
   };
 
-  const handleSaveMoodQuestions = (updatedMood: Mood) => {
-    setMoods(moods.map(m => m.id === updatedMood.id ? updatedMood : m));
+  const handleAddOptions = async (questionId: string, options: string[]) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/mood-questions/${questionId}/options/add`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ options })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add options');
+      }
+    } catch (error) {
+      console.error('Error adding options:', error);
+      throw error; // Re-throw to handle in the batch save
+    }
   };
 
-  const handleDeleteMood = (moodId: string) => {
-    setMoods(moods.filter(m => m.id !== moodId));
+  const handleAddNewQuestions = async (moodId: string, questions: { question: string, options: string[] }[]) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/mood-questions/add-with-options`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          mood_id: moodId,
+          questions 
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add new questions');
+      }
+    } catch (error) {
+      console.error('Error adding new questions:', error);
+      throw error;
+    }
+  };
+
+  const handleSaveMoodQuestions = async (updatedMood: Mood) => {
+    try {
+      const promises: Promise<any>[] = [];
+      const newQuestionsPayload: { question: string, options: string[] }[] = [];
+
+      updatedMood.questions.forEach((q) => {
+        // Check if question exists (has short ID - assuming server IDs are < 10 chars, temp IDs are timestamps)
+        const isExistingQuestion = q.id.length < 10; 
+        
+        if (isExistingQuestion) {
+          // Logic for existing questions: Add newly added options
+          const newOptions = q.options
+            .filter(o => o.id.length > 10)
+            .map(o => o.text)
+            .filter(text => text.trim() !== '');
+
+          if (newOptions.length > 0) {
+            promises.push(handleAddOptions(q.id, newOptions));
+          }
+        } else {
+          // Logic for new questions
+          if (q.question.trim() !== '') {
+             newQuestionsPayload.push({
+               question: q.question,
+               options: q.options.map(o => o.text).filter(t => t.trim() !== '')
+             });
+          }
+        }
+      });
+
+      // Add call for new questions if any
+      if (newQuestionsPayload.length > 0) {
+        promises.push(handleAddNewQuestions(updatedMood.id, newQuestionsPayload));
+      }
+
+      await Promise.all(promises);
+      showNotification('Changes saved successfully', 'success');
+      fetchMoods(); // Refresh to get real IDs
+    } catch (error) {
+      console.error('Error saving changes:', error);
+      showNotification('Failed to save some changes', 'error');
+    }
   };
 
   return (
     <div className="w-full">
+      <AlertModal
+        isOpen={showAlert}
+        onClose={() => setShowAlert(false)}
+        message={alertMessage}
+        type={alertType}
+      />
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleConfirmDelete}
+        title={`Delete ${deleteType === 'background' ? 'Background' : deleteType === 'mood' ? 'Mood' : deleteType === 'question' ? 'Question' : 'Option'}`}
+        message={`Are you sure you want to delete this ${deleteType === 'background' ? 'background sound' : deleteType === 'mood' ? 'mood' : deleteType === 'question' ? 'question' : 'option'}? This action cannot be undone.`}
+      />
       <div className="bg-white rounded-xl md:rounded-2xl shadow-sm overflow-hidden">
         {/* Header */}
         <div className="p-4 sm:p-5 md:p-6 border-b border-gray-100">
@@ -575,13 +930,34 @@ function Sessions() {
                   </tr>
                 </thead>
                 <tbody>
-                  {currentSessions.map((session, index) => (
-                    <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-gray-900">{session.userName}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{session.averageMood}</td>
-                      <td className="px-4 py-3 text-sm text-gray-900">{session.afterSession}</td>
+                  {isLoading ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
+                        Loading...
+                      </td>
                     </tr>
-                  ))}
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-8 text-center text-red-500">
+                        {error} <br/>
+                        <button onClick={fetchSessions} className="mt-2 text-blue-600 underline text-sm">Retry</button>
+                      </td>
+                    </tr>
+                  ) : currentSessions.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
+                        No sessions found
+                      </td>
+                    </tr>
+                  ) : (
+                    currentSessions.map((session, index) => (
+                      <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-sm text-gray-900">{session.userName}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{session.averageMood}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{session.afterSession}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -649,17 +1025,22 @@ function Sessions() {
                     }}
                   >
                     <button
-                      onClick={() => setBackgroundSounds(backgroundSounds.filter(s => s.id !== sound.id))}
+                      onClick={() => confirmDelete('background', sound.id)}
                       className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
                     >
                       <XMarkIcon className="w-4 h-4" />
                     </button>
 
                     <button 
+                      onClick={() => handlePlay(sound)}
                       className="w-14 h-14 rounded-full flex items-center justify-center text-white hover:opacity-90 transition-all"
                       style={{ backgroundColor: '#07657E' }}
                     >
-                      <PlayIcon className="w-6 h-6" />
+                      {playingId === sound.id ? (
+                        <PauseIcon className="w-6 h-6" />
+                      ) : (
+                        <PlayIcon className="w-6 h-6" />
+                      )}
                     </button>
                     <span className="text-xs text-gray-900 text-center font-medium" style={{ color: '#07657E' }}>
                       {sound.name}
@@ -686,21 +1067,21 @@ function Sessions() {
               </div>
               <div className="flex flex-wrap gap-2">
                 {moods.map((mood) => (
-                  <div key={mood.id} className="group relative">
-                    <button
-                      onClick={() => handleMoodClick(mood)}
-                      className="px-4 py-2 bg-white border border-gray-300 text-gray-900 rounded-lg text-sm font-medium hover:border-gray-400 transition-colors"
-                    >
-                      {mood.name}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteMood(mood.id)}
-                      className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
-                    >
-                      <XMarkIcon className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+              <div key={mood.id} className="relative group">
+                <button
+                  onClick={() => handleMoodClick(mood)}
+                  className="px-6 py-2 rounded-lg border border-gray-200 text-gray-700 font-medium hover:border-[#006699] hover:text-[#006699] transition-all bg-white"
+                >
+                  {mood.name}
+                </button>
+                <button
+                  onClick={() => confirmDelete('mood', mood.id)}
+                  className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-10"
+                >
+                  <XMarkIcon className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
               </div>
             </div>
 
@@ -732,11 +1113,21 @@ function Sessions() {
         onClose={() => setShowMoodModal(false)}
         onSave={handleAddMood}
       />
-      <ManageMoodQuestionsModal
-        isOpen={showQuestionsModal}
-        onClose={() => setShowQuestionsModal(false)}
-        mood={selectedMood}
-        onSave={handleSaveMoodQuestions}
+      {showQuestionsModal && selectedMood && (
+        <ManageMoodQuestionsModal
+          isOpen={showQuestionsModal}
+          onClose={() => setShowQuestionsModal(false)}
+          mood={selectedMood}
+          onSave={handleSaveMoodQuestions}
+          onDeleteQuestion={(id) => confirmDelete('question', id)}
+          onDeleteOption={(id) => confirmDelete('option', id)}
+        />
+      )}
+      <AlertModal
+        isOpen={showAlert}
+        onClose={() => setShowAlert(false)}
+        message={alertMessage}
+        type={alertType}
       />
     </div>
   );

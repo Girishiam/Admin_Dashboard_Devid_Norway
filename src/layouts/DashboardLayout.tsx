@@ -16,7 +16,7 @@ const menuItems = [
   { path: '/administrators', icon: '/icons/admin_icon.png', label: 'Administrators' },
   { path: '/sessions', icon: '/icons/session_icon.png', label: 'Sessions' },
   { path: '/payment', icon: '/icons/payment_icon.png', label: 'Payment' },
-  { path: '/apis', icon: '/icons/api_icon.png', label: "API's" }
+
 ];
 
 function DashboardLayout() {
@@ -157,12 +157,12 @@ function DashboardLayout() {
               className="bg-white border border-gray-200 rounded-xl flex items-center px-3 md:px-4 py-2 gap-2 md:gap-3 shadow-sm hover:border-gray-300 transition-all"
             >
               <img
-                src={`https://ui-avatars.com/api/?name=${user?.name || 'User'}&background=006699&color=fff&rounded=true&size=60`}
+                src={`https://ui-avatars.com/api/?name=${user?.username || 'User'}&background=006699&color=fff&rounded=true&size=60`}
                 alt="User"
                 className="w-8 h-8 md:w-10 md:h-10 rounded-full"
               />
               <div className="hidden sm:flex flex-col items-start leading-tight">
-                <span className="font-bold text-gray-900 text-[13px] md:text-[14px]">{user?.name || 'Moni Roy'}</span>
+                <span className="font-bold text-gray-900 text-[13px] md:text-[14px]">{user?.username || 'Moni Roy'}</span>
                 <span className="text-gray-500 text-[11px] md:text-[12px] font-medium">{user?.role || 'Super Admin'}</span>
               </div>
               <ChevronDownIcon className={`w-4 h-4 md:w-5 md:h-5 text-gray-400 transition-transform duration-200 ${showDropdown ? 'rotate-180' : ''}`} />
@@ -174,12 +174,12 @@ function DashboardLayout() {
                 <div className="px-6 py-4 border-b border-gray-100">
                   <div className="flex items-center gap-3">
                     <img
-                      src={`https://ui-avatars.com/api/?name=${user?.name || 'User'}&background=006699&color=fff&rounded=true&size=80`}
+                      src={`https://ui-avatars.com/api/?name=${user?.username || 'User'}&background=006699&color=fff&rounded=true&size=80`}
                       alt="User"
                       className="w-12 h-12 rounded-full"
                     />
                     <div className="flex-1">
-                      <p className="font-bold text-gray-900 text-sm">{user?.name || 'Moni Roy'}</p>
+                      <p className="font-bold text-gray-900 text-sm">{user?.username || 'Moni Roy'}</p>
                       <span 
                         className="inline-block px-3 py-1 rounded-full text-xs font-medium text-white mt-1"
                         style={{ backgroundColor: '#006699' }}

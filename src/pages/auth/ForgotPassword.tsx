@@ -1,22 +1,58 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 
+import { BASE_URL } from '../../api_integration';
+
+
+
 function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
   const navigate = useNavigate();
+
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setError('');
 
-    // Simulate API call
-    setTimeout(() => {
+    const url = `${BASE_URL}admin/forgot-password`;
+    console.log('Fetching URL:', url);
+    console.log('Payload:', JSON.stringify({ email }));
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+
+        body: JSON.stringify({ email }),
+
+      });
+
+      const data = await response.json();
+      console.log('Forgot password response:', data);
+
+      if (response.ok) {
+        // Navigate to OTP page with email
+        navigate('/auth/verify-otp', { state: { email } });
+      } else {
+        if (data.error === 'Resend too soon') {
+          setError(`Resend too soon. Please try again in ${data.retry_in} seconds.`);
+        } else {
+          console.error('Forgot password failed:', data.message || data.error || 'Unknown error');
+          setError(data.message || data.error || 'Failed to send reset email');
+        }
+      }
+    } catch (err) {
+      console.error('Forgot password error:', err);
+      setError('Something went wrong. Please try again.');
+    } finally {
       setIsLoading(false);
-      
-      // Navigate directly to OTP page with email
-      navigate('/auth/verify-otp', { state: { email } });
-    }, 1500);
+    }
   };
 
   return (
@@ -68,6 +104,13 @@ function ForgotPassword() {
               Please enter your email to get verification code
             </p>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm text-center">
+              {error}
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">

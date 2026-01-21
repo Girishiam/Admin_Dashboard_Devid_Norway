@@ -35,12 +35,7 @@ function Sidebar() {
       path: '/sessions', 
       icon: CogIcon 
     },
-    { 
-      id: 5, 
-      name: 'APIs', 
-      path: '/apis', 
-      icon: CogIcon 
-    },
+
     { 
       id: 6, 
       name: 'Payment', 

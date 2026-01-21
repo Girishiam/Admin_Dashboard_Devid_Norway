@@ -1,13 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 
+import { BASE_URL } from '../../api_integration';
+
 function VerifyOTP() {
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
   const email = location.state?.email || 'your email';
+
+
 
   useEffect(() => {
     // Focus first input on mount
@@ -64,20 +70,77 @@ function VerifyOTP() {
     }
 
     setIsLoading(true);
+    setError('');
+    setSuccessMessage('');
 
-    // Simulate API call
-    setTimeout(() => {
+    console.log('Verifying OTP:', otpCode, 'for email:', email);
+
+    try {
+      const response = await fetch(`${BASE_URL}admin/verify-reset-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, otp: otpCode }),
+      });
+
+      const data = await response.json();
+      console.log('Verify OTP response:', data);
+
+      if (response.ok) {
+        console.log('OTP Verified:', data.message);
+        setSuccessMessage(data.message || 'OTP verified. You can reset password now.');
+        // Navigate to reset password page with email and otp
+        setTimeout(() => {
+            navigate('/auth/reset-password', { state: { email, otp: otpCode } });
+        }, 1000);
+      } else {
+        console.error('OTP verification failed:', data.message || 'Unknown error');
+        setError(data.message || 'Invalid OTP');
+      }
+    } catch (err) {
+      console.error('Verify OTP error:', err);
+      setError('Something went wrong. Please try again.');
+    } finally {
       setIsLoading(false);
-      console.log('OTP:', otpCode);
-      // Navigate to reset password or success page
-      navigate('/auth/reset-password', { state: { email, otp: otpCode } });
-    }, 1500);
+    }
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     setOtp(['', '', '', '', '', '']);
     inputRefs.current[0]?.focus();
-    alert('Verification code resent!');
+    setError('');
+    setSuccessMessage('');
+    
+    console.log('Resending OTP to:', email);
+
+    try {
+      const response = await fetch(`${BASE_URL}admin/forgot-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+      console.log('Resend OTP response:', data);
+
+      if (response.ok) {
+        console.log('OTP Resent, Preview:', data.otp_preview);
+        setSuccessMessage('Verification code resent!');
+      } else {
+        if (data.error === 'Resend too soon') {
+          setError(`Resend too soon. Please try again in ${data.retry_in} seconds.`);
+        } else {
+          console.error('Resend OTP failed:', data.message);
+          setError(data.message || 'Failed to resend OTP');
+        }
+      }
+    } catch (err) {
+      console.error('Resend OTP error:', err);
+      setError('Failed to resend OTP. Please try again.');
+    }
   };
 
   return (
@@ -129,6 +192,20 @@ function VerifyOTP() {
               Please check your email for the 6 digit code.
             </p>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          {/* Success Message */}
+          {successMessage && (
+            <div className="mb-4 p-3 rounded-lg bg-green-50 border border-green-200 text-green-600 text-sm text-center">
+              {successMessage}
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-6">

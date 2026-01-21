@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { BASE_URL } from '../../api_integration';
 import { PlusIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { AlertModal } from '../../components/ui/AlertModal';
 
 interface Administrator {
   id: string;
@@ -13,15 +15,17 @@ interface Administrator {
 interface CreateAdminModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (admin: Omit<Administrator, 'id' | 'avatar'>) => void;
+  onSave: (admin: any) => Promise<void>;
 }
 
 interface EditAdminModalProps {
   isOpen: boolean;
   onClose: () => void;
   admin: Administrator | null;
-  onSave: (admin: Administrator) => void;
+  onSave: (id: string, admin: any) => Promise<void>;
 }
+
+
 
 interface DeleteConfirmModalProps {
   isOpen: boolean;
@@ -77,21 +81,25 @@ function DeleteConfirmModal({ isOpen, onClose, onConfirm, adminName }: DeleteCon
   );
 }
 
+// Custom Alert Modal
+
+
 // Create Administrator Modal
 function CreateAdminModal({ isOpen, onClose, onSave }: CreateAdminModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
+    password: '',
     phone: '',
-    accessLevel: 'Admin'
+    accessLevel: 'admin'
   });
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
-    setFormData({ name: '', email: '', phone: '', accessLevel: 'Admin' });
+    await onSave(formData);
+    setFormData({ name: '', email: '', password: '', phone: '', accessLevel: 'admin' });
     onClose();
   };
 
@@ -129,6 +137,18 @@ function CreateAdminModal({ isOpen, onClose, onSave }: CreateAdminModalProps) {
           </div>
 
           <div>
+            <label className="block text-sm font-semibold text-gray-900 mb-2">Password</label>
+            <input
+              type="password"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006699] focus:border-[#006699] transition-all text-sm"
+              required
+              minLength={6}
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-semibold text-gray-900 mb-2">Contact Number</label>
             <input
               type="tel"
@@ -146,8 +166,8 @@ function CreateAdminModal({ isOpen, onClose, onSave }: CreateAdminModalProps) {
               onChange={(e) => setFormData({ ...formData, accessLevel: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006699] focus:border-[#006699] transition-all bg-white text-sm"
             >
-              <option>Admin</option>
-              <option>Super Admin</option>
+              <option value="admin">Admin</option>
+              <option value="superadmin">Super Admin</option>
             </select>
           </div>
 
@@ -173,20 +193,36 @@ function CreateAdminModal({ isOpen, onClose, onSave }: CreateAdminModalProps) {
   );
 }
 
+
+
 // Edit Administrator Modal
 function EditAdminModal({ isOpen, onClose, admin, onSave }: EditAdminModalProps) {
-  const [formData, setFormData] = useState<Administrator | null>(admin);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    accessLevel: 'admin'
+  });
 
-  React.useEffect(() => {
-    setFormData(admin);
+  useEffect(() => {
+    if (admin) {
+      setFormData({
+        name: admin.name,
+        email: admin.email,
+        phone: admin.phone,
+        accessLevel: admin.accessLevel === 'Super Admin' ? 'superadmin' : 'admin'
+      });
+    }
   }, [admin]);
 
   if (!isOpen || !formData) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
-    onClose();
+    if (admin) {
+      await onSave(admin.id, formData);
+      onClose();
+    }
   };
 
   return (
@@ -240,8 +276,8 @@ function EditAdminModal({ isOpen, onClose, admin, onSave }: EditAdminModalProps)
               onChange={(e) => setFormData({ ...formData, accessLevel: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#006699] focus:border-[#006699] transition-all bg-white text-sm"
             >
-              <option>Admin</option>
-              <option>Super Admin</option>
+              <option value="admin">Admin</option>
+              <option value="superadmin">Super Admin</option>
             </select>
           </div>
 
@@ -277,21 +313,71 @@ function Administrators() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const [administrators, setAdministrators] = useState<Administrator[]>(
-    Array.from({ length: 25 }, (_, i) => ({
-      id: `#${1233 + i}`,
-      name: 'Foysal Rahman',
-      email: 'user@example.com',
-      phone: `(${200 + i}) 555-${String(i).padStart(4, '0')}`,
-      accessLevel: i % 5 === 0 ? 'Super Admin' : 'Admin',
-      avatar: `https://ui-avatars.com/api/?name=Foysal+Rahman&background=006699&color=fff&seed=${i}`
-    }))
-  );
+  const [administrators, setAdministrators] = useState<Administrator[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  // Alert Modal State
+  const [showAlert, setShowAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertType, setAlertType] = useState<'success' | 'error'>('error');
 
-  const totalPages = Math.ceil(administrators.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = startIndex + itemsPerPage;
-  const currentAdministrators = administrators.slice(startIndex, endIndex);
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    setAlertMessage(message);
+    setAlertType(type);
+    setShowAlert(true);
+  };
+
+  const fetchAdmins = async () => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/admins?page=${currentPage}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch administrators');
+      }
+
+      const data = await response.json();
+
+      if (data.admins) {
+        const mappedAdmins = data.admins.map((admin: any) => ({
+          id: `#${admin.id}`,
+          name: admin.name,
+          email: admin.email,
+          phone: admin.contact_number || 'N/A',
+          accessLevel: admin.role === 'superadmin' ? 'Super Admin' : 'Admin',
+          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(admin.name)}&background=006699&color=fff`
+        }));
+        setAdministrators(mappedAdmins);
+      }
+
+      if (data.pagination) {
+        setTotalPages(data.pagination.total_pages);
+      }
+    } catch (err) {
+      console.error('Error fetching admins:', err);
+      setError('Failed to load administrators');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdmins();
+  }, [currentPage]);
+
+  // Removed client-side slicing since API handles pagination
+  // const startIndex = (currentPage - 1) * itemsPerPage;
+  // const endIndex = startIndex + itemsPerPage;
+  // const currentAdministrators = administrators.slice(startIndex, endIndex);
+  const currentAdministrators = administrators;
 
   const getPageNumbers = () => {
     const pages: (number | string)[] = [];
@@ -321,13 +407,32 @@ function Administrators() {
     return pages;
   };
 
-  const handleCreateAdmin = (newAdmin: Omit<Administrator, 'id' | 'avatar'>) => {
-    const admin: Administrator = {
-      ...newAdmin,
-      id: `#${1233 + administrators.length}`,
-      avatar: `https://ui-avatars.com/api/?name=${newAdmin.name}&background=006699&color=fff`
-    };
-    setAdministrators([...administrators, admin]);
+  const handleCreateAdmin = async (newAdmin: any) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${BASE_URL}admin/admins/add`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: newAdmin.name,
+          email: newAdmin.email,
+          password: newAdmin.password,
+          contact_number: newAdmin.phone,
+          role: newAdmin.accessLevel
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create administrator');
+      }
+      
+      fetchAdmins();
+    } catch (err) {
+      console.error('Error creating admin:', err);
+    }
   };
 
   const handleEditAdmin = (admin: Administrator) => {
@@ -335,21 +440,81 @@ function Administrators() {
     setShowEditModal(true);
   };
 
-  const handleSaveEdit = (updatedAdmin: Administrator) => {
-    setAdministrators(administrators.map(admin => 
-      admin.id === updatedAdmin.id ? updatedAdmin : admin
-    ));
+  const handleSaveEdit = async (id: string, updatedData: any) => {
+    try {
+      const token = localStorage.getItem('token');
+      const rawId = id.replace('#', '');
+      const response = await fetch(`${BASE_URL}admin/admins/${rawId}/edit`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: updatedData.name,
+          email: updatedData.email,
+          contact_number: updatedData.phone,
+          role: updatedData.accessLevel
+        })
+      });
+
+      if (response.ok) {
+        fetchAdmins();
+        setShowEditModal(false); // Close modal on success
+      } else {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 403) {
+          showNotification(data.error || 'You do not have permission to edit this administrator. Super Admins cannot be edited.', 'error');
+        } else {
+          showNotification(data.error || 'Failed to update admin', 'error');
+        }
+        console.error('Failed to update admin:', response.status);
+      }
+    } catch (err) {
+      console.error('Error updating admin:', err);
+      showNotification('An error occurred while updating admin', 'error');
+    }
   };
+
+
 
   const handleDeleteClick = (admin: Administrator) => {
     setAdminToDelete(admin);
     setShowDeleteModal(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (adminToDelete) {
-      setAdministrators(administrators.filter(admin => admin.id !== adminToDelete.id));
-      setAdminToDelete(null);
+      try {
+        const token = localStorage.getItem('token');
+        const rawId = adminToDelete.id.replace('#', '');
+        const response = await fetch(`${BASE_URL}admin/admins/${rawId}/delete`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+
+        if (response.ok) {
+           fetchAdmins(); // Refresh list
+           setShowDeleteModal(false); // Close only on success (or always properly handled)
+        } else {
+           const data = await response.json().catch(() => ({}));
+           if (response.status === 403) {
+             showNotification(data.error || 'You do not have permission to delete this administrator. Super Admins cannot be deleted.', 'error');
+           } else {
+             showNotification(data.error || 'Failed to delete admin', 'error');
+           }
+           console.error('Failed to delete admin');
+        }
+      } catch (err) {
+        console.error('Error deleting admin:', err);
+        showNotification('An error occurred while deleting admin', 'error');
+      }
+      setAdminToDelete(null); // Reset selection
+      // Don't close modal immediately if we want them to see the error? 
+      // Actually alert blocks, so simple flow:
+      setShowDeleteModal(false); 
     }
   };
 
@@ -381,7 +546,29 @@ function Administrators() {
               </tr>
             </thead>
             <tbody>
-              {currentAdministrators.map((admin, index) => (
+              {isLoading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                    <div className="flex justify-center items-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#006699]"></div>
+                    </div>
+                  </td>
+                </tr>
+              ) : error ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-red-500">
+                    {error} <br/>
+                    <button onClick={fetchAdmins} className="mt-2 text-blue-600 underline text-sm">Retry</button>
+                  </td>
+                </tr>
+              ) : currentAdministrators.length === 0 ? (
+                <tr>
+                   <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                     No administrators found.
+                   </td>
+                </tr>
+              ) : (
+              currentAdministrators.map((admin, index) => (
                 <tr key={index} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 text-sm font-semibold text-gray-900 whitespace-nowrap">{admin.id}</td>
                   <td className="px-6 py-4">
@@ -413,7 +600,8 @@ function Administrators() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              ))
+            )}
             </tbody>
           </table>
         </div>
@@ -447,7 +635,7 @@ function Administrators() {
                     <PencilIcon className="w-5 h-5" />
                   </button>
                   
-                  <button
+                  <button // This might fail if previous step removed empty lines. Let's be careful.
                     onClick={() => handleDeleteClick(admin)}
                     className="inline-flex items-center justify-center w-9 h-9 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
                   >
@@ -463,7 +651,7 @@ function Administrators() {
         <div className="px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-6 border-t border-gray-100 bg-gray-50">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
             <div className="text-xs sm:text-sm text-gray-600 order-2 sm:order-1">
-              Showing {startIndex + 1} to {Math.min(endIndex, administrators.length)} of {administrators.length} results
+              Page {currentPage} of {totalPages}
             </div>
             <div className="flex items-center gap-1 flex-wrap justify-center order-1 sm:order-2">
               <button
@@ -520,6 +708,12 @@ function Administrators() {
         }}
         onConfirm={handleConfirmDelete}
         adminName={adminToDelete?.name || ''}
+      />
+      <AlertModal
+        isOpen={showAlert}
+        onClose={() => setShowAlert(false)}
+        message={alertMessage}
+        type={alertType}
       />
     </div>
   );
