@@ -21,12 +21,12 @@ function Header() {
           className="flex items-center gap-3 hover:bg-gray-50 px-3 py-2 rounded-lg transition-colors"
         >
           <img
-            src={`https://ui-avatars.com/api/?name=${user?.name || 'User'}&background=006699&color=fff`}
+            src={`https://ui-avatars.com/api/?name=${user?.username || 'User'}&background=006699&color=fff`}
             alt="Profile"
             className="w-10 h-10 rounded-full"
           />
           <div className="text-left">
-            <p className="text-sm font-semibold text-gray-900">{user?.name || 'User'}</p>
+            <p className="text-sm font-semibold text-gray-900">{user?.username || 'User'}</p>
             <p className="text-xs text-gray-500">{user?.role || 'Admin'}</p>
           </div>
           <ChevronDownIcon className="w-4 h-4 text-gray-500" />
